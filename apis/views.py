@@ -108,7 +108,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
-    def download_total_balance_sheet(self, request):
+    def balance_sheet(self, request):
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Balance Sheet"
@@ -144,7 +144,7 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         return response
 
     @action(detail=False, methods=['get'])
-    def my_expense_sheet(self, request):
+    def my_balance_sheet(self, request):
         user = request.user
         expense_shares = ExpenseShare.objects.filter(user=user)
 
