@@ -1,11 +1,15 @@
+from io import BytesIO
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.http import HttpResponse
+from openpyxl.workbook import Workbook
 from rest_framework import viewsets, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from .models import Expense, ExpenseShare
-from .serializers import ExpenseSerializer, ExpenseCreateSerializer
+from .serializers import ExpenseSerializer, ExpenseCreateSerializer, ExpenseShareSerializer
 
 User = get_user_model()
 
@@ -93,15 +97,84 @@ class ExpenseViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def my_expenses(self, request):
         user = request.user
-        expenses = Expense.objects.filter(shares__user=user)
+        expenses_shares = ExpenseShare.objects.filter(user=user)
+        serializer = ExpenseShareSerializer(expenses_shares, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def total_expenses(self, request):
+        expenses = Expense.objects.all()
         serializer = ExpenseSerializer(expenses, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
-    def download_balance_sheet(self, request):
-        # Generate the balance sheet (for simplicity, we'll return a JSON response)
-        balance_sheet = []
-        for expense in Expense.objects.all():
-            expense_data = ExpenseSerializer(expense).data
-            balance_sheet.append(expense_data)
-        return Response(balance_sheet, status=status.HTTP_200_OK)
+    def download_total_balance_sheet(self, request):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Balance Sheet"
+
+        headers = [
+            "Expense Description", "Total Amount", "Split Method", "Created By",
+            "User", "Amount", "Percentage"
+        ]
+        sheet.append(headers)
+
+        expenses = Expense.objects.all()
+        for expense in expenses:
+            shares = ExpenseShare.objects.filter(expense=expense)
+            for share in shares:
+                row = [
+                    expense.description,
+                    expense.total_amount,
+                    expense.split_method,
+                    expense.created_by.email,
+                    share.user.email,
+                    share.amount,
+                    getattr(share, 'percentage', 'N/A')
+                ]
+                sheet.append(row)
+
+        buffer = BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer,
+                                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=balance_sheet.xlsx'
+        return response
+
+    @action(detail=False, methods=['get'])
+    def my_expense_sheet(self, request):
+        user = request.user
+        expense_shares = ExpenseShare.objects.filter(user=user)
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "My Expense Sheet"
+
+        headers = [
+            "Expense Description", "Total Amount", "Split Method", "Created By",
+            "Amount", "Percentage"
+        ]
+        sheet.append(headers)
+
+        for share in expense_shares:
+            expense = share.expense
+            row = [
+                expense.description,
+                expense.total_amount,
+                expense.split_method,
+                expense.created_by.email,
+                share.amount,
+                getattr(share, 'percentage', 'N/A')
+            ]
+            sheet.append(row)
+
+        buffer = BytesIO()
+        workbook.save(buffer)
+        buffer.seek(0)
+
+        response = HttpResponse(buffer,
+                                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=my_expense_sheet.xlsx'
+        return response
