@@ -5,6 +5,8 @@ from django.core.validators import RegexValidator
 from django.contrib.auth.base_user import BaseUserManager
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import ValidationError
+import re
 
 
 class CustomUserManager(BaseUserManager):
@@ -22,6 +24,7 @@ class CustomUserManager(BaseUserManager):
         email = self.normalize_email(email)
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
+        user.clean()
         user.save()
         return user
 
@@ -59,3 +62,9 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+
+    def clean(self):
+        super().clean()
+        regex = r'^[789]\d{9}$'
+        if not re.match(regex, self.mobile_number):
+            raise ValidationError('Phone number must be 10 digits long and start with 7, 8, or 9.')
